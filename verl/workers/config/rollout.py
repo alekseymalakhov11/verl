@@ -372,6 +372,20 @@ class RolloutConfig(BaseConfig):
                     "tensor_parallel_size={self.tensor_model_parallel_size} "
                 )
 
+            if self.speculative_decoding.method.lower() in {"eagle", "eagle3"} and (
+                self.enable_chunked_prefill or self.enable_prefix_caching or not self.enforce_eager
+            ):
+                warnings.warn(
+                    "vLLM speculative decoding with EAGLE/EAGLE3 may regress throughput when "
+                    "enable_chunked_prefill=True, enable_prefix_caching=True, or enforce_eager=False. "
+                    "Overriding to enable_chunked_prefill=False, enable_prefix_caching=False, "
+                    "and enforce_eager=True for now.",
+                    stacklevel=2,
+                )
+                self.enable_chunked_prefill = False
+                self.enable_prefix_caching = False
+                self.enforce_eager = True
+
         if self.speculative_decoding.enable and self.mtp.enable_rollout:
             raise ValueError("Use either speculative_decoding or mtp, but not both simultaneously")
 
