@@ -320,7 +320,13 @@ class vLLMOmniColocateWorkerExtension(_OmniWorkerBase):
 
         return super().__new__(cls)
 
-    def update_weights_from_ipc(self, peft_config: dict = None, base_sync_done=False, use_shm: bool = False):
+    def update_weights_from_ipc(
+        self,
+        peft_config: dict = None,
+        base_sync_done=False,
+        use_shm: bool = False,
+        use_speculative_decoding: bool = False,
+    ):
         """Update the weights of the rollout model."""
 
         from verl.workers.rollout.vllm_rollout.bucketed_weight_transfer import BucketedWeightReceiver

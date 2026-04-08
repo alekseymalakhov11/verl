@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import asyncio
 import logging
 import os
 
@@ -110,7 +110,7 @@ def update_prometheus_config(config: PrometheusConfig, server_addresses: list[st
         logger.error(f"Failed to update Prometheus configuration: {e}")
 
 
-def read_spec_decoding_metrics_from_prometheus(server_adresses: list[str]) -> dict[str, float]:
+def _read_spec_decoding_metrics_from_prometheus_for_address(address: str) -> dict[str, float]:
     import requests
     from prometheus_client.parser import text_string_to_metric_families
 
@@ -123,11 +123,31 @@ def read_spec_decoding_metrics_from_prometheus(server_adresses: list[str]) -> di
     session = requests.Session()
     session.trust_env = False
 
-    for address in server_adresses:
-        metrics_text = session.get(f"http://{address}/metrics", timeout=5).text
-        for family in text_string_to_metric_families(metrics_text):
-            for sample in family.samples:
-                key = metric_name_to_key.get(sample.name)
-                if key is not None:
-                    totals[key] += float(sample.value)
+    metrics_text = session.get(f"http://{address}/metrics", timeout=5).text
+    for family in text_string_to_metric_families(metrics_text):
+        for sample in family.samples:
+            key = metric_name_to_key.get(sample.name)
+            if key is not None:
+                totals[key] += float(sample.value)
+    return totals
+
+
+async def read_spec_decoding_metrics_from_prometheus(server_adresses: list[str]) -> dict[str, float]:
+    totals = {
+        "num_drafts": 0.0,
+        "num_draft_tokens": 0.0,
+        "num_accepted_tokens": 0.0,
+    }
+
+    results = await asyncio.gather(
+        *[
+            asyncio.to_thread(_read_spec_decoding_metrics_from_prometheus_for_address, address)
+            for address in server_adresses
+        ]
+    )
+
+    for metrics in results:
+        for key, value in metrics.items():
+            totals[key] += value
+
     return totals

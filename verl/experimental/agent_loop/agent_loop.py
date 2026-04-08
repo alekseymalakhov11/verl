@@ -1151,7 +1151,7 @@ class AgentLoopManager:
         spec_before = None
         if self.rollout_config.name == "vllm" and self.rollout_config.speculative_decoding.enable:
             try:
-                spec_before = read_spec_decoding_metrics_from_prometheus(self.server_addresses)
+                spec_before = await read_spec_decoding_metrics_from_prometheus(self.server_addresses)
             except Exception as e:
                 print(f"speculative decoding unavailable: {e}")
 
@@ -1174,7 +1174,7 @@ class AgentLoopManager:
 
         if spec_before is not None:
             try:
-                spec_after = read_spec_decoding_metrics_from_prometheus(self.server_addresses)
+                spec_after = await read_spec_decoding_metrics_from_prometheus(self.server_addresses)
                 spec_delta = {key: spec_after[key] - spec_before[key] for key in spec_before}
                 acceptance_rate = (
                     spec_delta["num_accepted_tokens"] / spec_delta["num_draft_tokens"]
