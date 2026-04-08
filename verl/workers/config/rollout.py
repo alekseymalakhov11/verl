@@ -33,6 +33,7 @@ __all__ = [
     "RolloutConfig",
     "DiffusionRolloutConfig",
     "CheckpointEngineConfig",
+    "SpeculativeDecodingConfig",
 ]
 
 
@@ -143,6 +144,18 @@ class CheckpointEngineConfig(BaseConfig):
     update_weights_bucket_megabytes: int = 2048
     # Additional keyword arguments for checkpoint engine
     engine_kwargs: dict = field(default_factory=dict)
+
+
+@dataclass
+class SpeculativeDecodingConfig(BaseConfig):
+    enable: bool = False
+
+    method: str = "eagle3"
+    num_steps: int = 3
+    num_draft_tokens: int = 4
+    draft_model_path: str | None = None
+
+    draft_tensor_parallel_size: int = 1
 
 
 @dataclass
@@ -262,6 +275,8 @@ class RolloutConfig(BaseConfig):
 
     mtp: MtpConfig = field(default_factory=MtpConfig)
 
+    speculative_decoding: SpeculativeDecodingConfig = field(default_factory=SpeculativeDecodingConfig)
+
     qat: Optional[dict] = None
 
     def __post_init__(self):
@@ -310,6 +325,32 @@ class RolloutConfig(BaseConfig):
                 raise NotImplementedError(
                     f"Current rollout {self.name=} not implemented pipeline_model_parallel_size > 1 yet."
                 )
+
+        if self.name != "vllm" and self.speculative_decoding.enable:
+            raise NotImplementedError(
+                f"Rollout {self.name=} does not support speculative decoding "
+                f"{self.speculative_decoding.method=} for rollout acceleration yet"
+            )
+
+        if self.name == "vllm" and self.speculative_decoding.enable:
+            if self.speculative_decoding.method.lower() not in {"eagle", "eagle3"}:
+                warnings.warn(
+                    "Speculative decoding methods other than 'eagle' and 'eagle3' are untested and may be buggy ",
+                    stacklevel=2,
+                )
+
+            if (
+                self.speculative_decoding.draft_tensor_parallel_size != 1
+                or self.speculative_decoding.draft_tensor_parallel_size != self.tensor_model_parallel_size
+            ):
+                raise ValueError(
+                    f"draft_tensor_parallel_size={self.speculative_decoding.draft_tensor_parallel_size} "
+                    "cannot be other value than 1 or target model "
+                    "tensor_parallel_size={self.tensor_model_parallel_size} "
+                )
+
+        if self.speculative_decoding.enable and self.mtp.enable_rollout:
+            raise ValueError("Use either speculative_decoding or mtp, but not both simultaneously")
 
 
 @dataclass

@@ -108,3 +108,26 @@ def update_prometheus_config(config: PrometheusConfig, server_addresses: list[st
 
     except Exception as e:
         logger.error(f"Failed to update Prometheus configuration: {e}")
+
+
+def read_spec_decoding_metrics_from_prometheus(server_adresses: list[str]) -> dict[str, float]:
+    import requests
+    from prometheus_client.parser import text_string_to_metric_families
+
+    metric_name_to_key = {
+        "vllm:spec_decode_num_drafts_total": "num_drafts",
+        "vllm:spec_decode_num_draft_tokens_total": "num_draft_tokens",
+        "vllm:spec_decode_num_accepted_tokens_total": "num_accepted_tokens",
+    }
+    totals = {key: 0.0 for key in metric_name_to_key.values()}
+    session = requests.Session()
+    session.trust_env = False
+
+    for address in server_adresses:
+        metrics_text = session.get(f"http://{address}/metrics", timeout=5).text
+        for family in text_string_to_metric_families(metrics_text):
+            for sample in family.samples:
+                key = metric_name_to_key.get(sample.name)
+                if key is not None:
+                    totals[key] += float(sample.value)
+    return totals
