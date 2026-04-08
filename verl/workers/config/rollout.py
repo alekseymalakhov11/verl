@@ -362,9 +362,9 @@ class RolloutConfig(BaseConfig):
                     stacklevel=2,
                 )
 
-            if (
-                self.speculative_decoding.draft_tensor_parallel_size != 1
-                or self.speculative_decoding.draft_tensor_parallel_size != self.tensor_model_parallel_size
+            if not (
+                self.speculative_decoding.draft_tensor_parallel_size == self.tensor_model_parallel_size
+                or self.speculative_decoding.draft_tensor_parallel_size == 1
             ):
                 raise ValueError(
                     f"draft_tensor_parallel_size={self.speculative_decoding.draft_tensor_parallel_size} "
