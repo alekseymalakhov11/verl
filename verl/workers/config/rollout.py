@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
+import os
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional
@@ -36,6 +38,9 @@ __all__ = [
     "SpeculativeDecodingConfig",
     "SkipConfig",
 ]
+
+logger = logging.getLogger(__name__)
+logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
 @dataclass
@@ -176,6 +181,9 @@ class SpeculativeDecodingConfig(BaseConfig):
     draft_model_path: str | None = None
 
     draft_tensor_parallel_size: int = 1
+    # Disabled by default because speculative decoding metrics currently require
+    # Prometheus scrapes around rollout batches, which can slightly reduce speedup.
+    log_metrics: bool = False
 
 
 @dataclass
@@ -362,6 +370,12 @@ class RolloutConfig(BaseConfig):
                     stacklevel=2,
                 )
 
+            if self.load_format != "safetensors":
+                raise ValueError(
+                    "vLLM speculative decoding currently requires rollout.load_format='safetensors', "
+                    f"but got {self.load_format}"
+                )
+
             if not (
                 self.speculative_decoding.draft_tensor_parallel_size == self.tensor_model_parallel_size
                 or self.speculative_decoding.draft_tensor_parallel_size == 1
@@ -369,22 +383,31 @@ class RolloutConfig(BaseConfig):
                 raise ValueError(
                     f"draft_tensor_parallel_size={self.speculative_decoding.draft_tensor_parallel_size} "
                     "cannot be other value than 1 or target model "
-                    "tensor_parallel_size={self.tensor_model_parallel_size} "
+                    f"tensor_parallel_size={self.tensor_model_parallel_size} "
+                )
+
+            if self.speculative_decoding.log_metrics:
+                msg = (
+                    "speculative_decoding.log_metrics defaults to False because enabling it can slightly "
+                    "reduce rollout speedup. vLLM does not currently expose speculative decoding metrics "
+                    "directly, so this path scrapes Prometheus around rollout batches."
+                )
+                logger.warning(msg)
+                warnings.warn(
+                    msg,
+                    stacklevel=2,
                 )
 
             if self.speculative_decoding.method.lower() in {"eagle", "eagle3"} and (
                 self.enable_chunked_prefill or self.enable_prefix_caching or not self.enforce_eager
             ):
                 warnings.warn(
-                    "vLLM speculative decoding with EAGLE/EAGLE3 may regress throughput when "
+                    "vLLM speculative decoding with EAGLE/EAGLE3 can regress throughput under "
                     "enable_chunked_prefill=True, enable_prefix_caching=True, or enforce_eager=False. "
-                    "Overriding to enable_chunked_prefill=False, enable_prefix_caching=False, "
-                    "and enforce_eager=True for now.",
+                    "For better performance, set enable_chunked_prefill=False, "
+                    "enable_prefix_caching=False, and enforce_eager=True.",
                     stacklevel=2,
                 )
-                self.enable_chunked_prefill = False
-                self.enable_prefix_caching = False
-                self.enforce_eager = True
 
         if self.speculative_decoding.enable and self.mtp.enable_rollout:
             raise ValueError("Use either speculative_decoding or mtp, but not both simultaneously")

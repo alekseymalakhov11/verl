@@ -1149,7 +1149,11 @@ class AgentLoopManager:
             await self.teacher_model_manager.wake_up()
 
         spec_before = None
-        if self.rollout_config.name == "vllm" and self.rollout_config.speculative_decoding.enable:
+        if (
+            self.rollout_config.name == "vllm"
+            and self.rollout_config.speculative_decoding.enable
+            and self.rollout_config.speculative_decoding.log_metrics
+        ):
             try:
                 spec_before = await read_spec_decoding_metrics_from_prometheus(self.server_addresses)
             except Exception as e:
